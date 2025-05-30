@@ -4,6 +4,7 @@ use crossterm::{
     execute,
     style::{Color, SetForegroundColor},
     terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    Result as CrosstermResult,
 };
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
@@ -86,7 +87,7 @@ impl Game {
     }
 }
 
-fn draw(game: &Game, stdout: &mut std::io::Stdout) -> crossterm::Result<()> {
+fn draw(game: &Game, stdout: &mut std::io::Stdout) -> CrosstermResult<()> {
     execute!(stdout, cursor::MoveTo(0, 0))?;
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
@@ -105,7 +106,7 @@ fn draw(game: &Game, stdout: &mut std::io::Stdout) -> crossterm::Result<()> {
     stdout.flush()
 }
 
-fn main() -> crossterm::Result<()> {
+fn main() -> CrosstermResult<()> {
     let mut stdout = stdout();
     terminal::enable_raw_mode()?;
     execute!(
