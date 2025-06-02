@@ -273,18 +273,25 @@ async fn main() {
                     2.0,
                     GREEN,
                 );
-                // Draw eel with gradient
+                // Draw eel as a solid tube with rounded turns
                 let len = game.eel.len().max(1) as f32;
-                for (i, &(x, y)) in game.eel.iter().enumerate() {
+                let seg_radius = CELL_SIZE * 0.48;
+                let seg_width = seg_radius * 2.0;
+                for i in 0..game.eel.len() {
                     let t = i as f32 / (len - 1.0).max(1.0);
                     let color = color_lerp(game.eel_gradient.0, game.eel_gradient.1, t);
-                    draw_rectangle(
-                        x as f32 * CELL_SIZE,
-                        y as f32 * CELL_SIZE,
-                        CELL_SIZE,
-                        CELL_SIZE,
-                        color,
-                    );
+                    let (x, y) = game.eel[i];
+                    let cx = x as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+                    let cy = y as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+                    // Draw line to next segment (if any)
+                    if i + 1 < game.eel.len() {
+                        let (nx, ny) = game.eel[i + 1];
+                        let ncx = nx as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+                        let ncy = ny as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+                        draw_line(cx, cy, ncx, ncy, seg_width, color);
+                    }
+                    // Draw circle at center for rounded ends
+                    draw_circle(cx, cy, seg_radius, color);
                 }
                 // Draw food
                 let (fx, fy, food_type) = game.food;
