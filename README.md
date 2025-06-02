@@ -14,4 +14,7 @@ cargo build --release
 cargo run --release
 ```
 
-Controls use `J`, `K`, `L`, `I` for left, down, right and up. Quit with `q`.
+Controls:
+- Arrow keys: Move the eel
+- SPACE: Pause/unpause (and restart after Game Over)
+- ESC: Quit

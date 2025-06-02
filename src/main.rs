@@ -1,13 +1,14 @@
-use minifb::{Key, Window, WindowOptions};
-use rand::{thread_rng, Rng};
+use macroquad::prelude::*;
+use ::rand::prelude::*;
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
 
-const DEFAULT_WIDTH: u16 = 30;
-const DEFAULT_HEIGHT: u16 = 30;
-const CELL_SIZE: usize = 10;
+const BOARD_WIDTH: u16 = 30;
+const BOARD_HEIGHT: u16 = 30;
+const CELL_SIZE: f32 = 20.0;
+const METRICS_HEIGHT: f32 = 40.0;
+const BASE_INTERVAL: f32 = 0.15; // seconds
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum Direction {
     Up,
     Down,
@@ -26,7 +27,7 @@ struct Game {
 
 impl Game {
     fn new_with_size(width: u16, height: u16) -> Self {
-        let mut rng = thread_rng();
+        let mut rng = ::rand::thread_rng();
         let dir = match rng.gen_range(0..4) {
             0 => Direction::Up,
             1 => Direction::Down,
@@ -43,8 +44,8 @@ impl Game {
         let center_y = height / 2;
         let eel: VecDeque<_> = (0..3)
             .map(|i| (
-                (center_x as i16 + i * dx).clamp(1, (width - 2) as i16) as u16,
-                (center_y as i16 + i * dy).clamp(1, (height - 2) as i16) as u16
+                (center_x as i16 + i * dx).clamp(0, (width - 1) as i16) as u16,
+                (center_y as i16 + i * dy).clamp(0, (height - 1) as i16) as u16
             ))
             .collect();
         let fish = Self::random_pos(&eel, width, height);
@@ -52,13 +53,13 @@ impl Game {
     }
 
     fn new() -> Self {
-        Self::new_with_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+        Self::new_with_size(BOARD_WIDTH, BOARD_HEIGHT)
     }
 
     fn random_pos(eel: &VecDeque<(u16, u16)>, width: u16, height: u16) -> (u16, u16) {
-        let mut rng = thread_rng();
+        let mut rng = ::rand::thread_rng();
         loop {
-            let p = (rng.gen_range(1..width-1), rng.gen_range(1..height-1));
+            let p = (rng.gen_range(0..width), rng.gen_range(0..height));
             if !eel.contains(&p) {
                 return p;
             }
@@ -76,6 +77,7 @@ impl Game {
             Direction::Left => x = x.wrapping_sub(1),
             Direction::Right => x = x.wrapping_add(1),
         }
+        // Wrap around the field
         x = (x + self.width) % self.width;
         y = (y + self.height) % self.height;
         if self.eel.contains(&(x, y)) {
@@ -93,146 +95,154 @@ impl Game {
     fn change_dir(&mut self, new_dir: Direction) {
         use Direction::*;
         if matches!((self.dir, new_dir), (Up, Down) | (Down, Up) | (Left, Right) | (Right, Left)) {
-            // ignore reverse direction
+            // Ignore opposite direction
         } else {
             self.dir = new_dir;
         }
     }
 }
 
-#[derive(Copy, Clone)]
-enum Color {
-    Black,
-    Green,
-    Red,
-    Yellow,
-}
-
-fn color_to_u32(color: Color) -> u32 {
-    match color {
-        Color::Black => 0x000000,
-        Color::Green => 0x00FF00,
-        Color::Red => 0xFF0000,
-        Color::Yellow => 0xFFFF00,
-    }
-}
-
-fn draw_window(game: &Game, buffer: &mut [u32], width: usize, _height: usize) {
-    let field_w = game.width as usize;
-    let field_h = game.height as usize;
-    for y in 0..field_h {
-        for x in 0..field_w {
-            let color = if (y == 0 || y == field_h - 1) && (x == 0 || x == field_w - 1) {
-                Color::Green
-            } else if y == 0 || y == field_h - 1 {
-                Color::Green
-            } else if x == 0 || x == field_w - 1 {
-                Color::Green
-            } else if game.eel.front() == Some(&(x as u16, y as u16)) {
-                Color::Yellow
-            } else if game.eel.contains(&(x as u16, y as u16)) {
-                Color::Green
-            } else if game.fish == (x as u16, y as u16) {
-                Color::Red
-            } else {
-                Color::Black
-            };
-            let value = color_to_u32(color);
-            let px = x * CELL_SIZE;
-            let py = y * CELL_SIZE;
-            for dy in 0..CELL_SIZE {
-                for dx in 0..CELL_SIZE {
-                    let idx = (py + dy) * width + (px + dx);
-                    if idx < buffer.len() {
-                        buffer[idx] = value;
-                    }
-                }
-            }
-        }
-    }
-    // Draw GAME OVER message if needed
-    if game.over {
-        let msg = "GAME OVER";
-        let msg_len = msg.len() as usize;
-        let char_w = 8; // rough width in pixels per char
-        let char_h = 16; // rough height in pixels per char
-        let x0 = (width / 2).saturating_sub((msg_len * char_w) / 2);
-        let y0 = (field_h * CELL_SIZE) / 2 - char_h / 2;
-        // Draw a simple blocky message (white rectangle for each char)
-        for (i, _c) in msg.chars().enumerate() {
-            let cx = x0 + i * char_w;
-            for dy in 0..char_h {
-                for dx in 0..char_w {
-                    let idx = (y0 + dy) * width + (cx + dx);
-                    if idx < buffer.len() {
-                        buffer[idx] = 0xFFFFFF;
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn main() {
-    let field_width = DEFAULT_WIDTH as usize;
-    let field_height = DEFAULT_HEIGHT as usize;
-    let win_width = field_width * CELL_SIZE;
-    let win_height = field_height * CELL_SIZE;
-    let mut window = Window::new(
-        "Eelgame",
-        win_width,
-        win_height,
-        WindowOptions::default(),
-    ).unwrap();
-    let mut buffer = vec![0; win_width * win_height];
+#[macroquad::main("Eelgame")]
+async fn main() {
+    let win_width = BOARD_WIDTH as f32 * CELL_SIZE;
+    let win_height = BOARD_HEIGHT as f32 * CELL_SIZE + METRICS_HEIGHT;
+    request_new_screen_size(win_width, win_height);
     let mut game = Game::new();
-    let mut last_tick = Instant::now();
     let mut paused = false;
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        // Pause toggle
-        if window.is_key_pressed(Key::Space, minifb::KeyRepeat::No) {
-            paused = !paused;
+    let mut speed: u8 = 1;
+    let mut last_update = get_time();
+    loop {
+        clear_background(BLACK);
+        // Draw thin border
+        draw_rectangle_lines(
+            0.0,
+            0.0,
+            BOARD_WIDTH as f32 * CELL_SIZE,
+            BOARD_HEIGHT as f32 * CELL_SIZE,
+            2.0,
+            GREEN,
+        );
+        // Draw eel
+        for (i, &(x, y)) in game.eel.iter().enumerate() {
+            let color = if i == 0 { YELLOW } else { GREEN };
+            draw_rectangle(
+                x as f32 * CELL_SIZE,
+                y as f32 * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+                color,
+            );
         }
-        // Input
+        // Draw fish
+        let (fx, fy) = game.fish;
+        draw_rectangle(
+            fx as f32 * CELL_SIZE,
+            fy as f32 * CELL_SIZE,
+            CELL_SIZE,
+            CELL_SIZE,
+            RED,
+        );
+        // Draw metrics below the field (always on top)
+        draw_rectangle(
+            0.0,
+            BOARD_HEIGHT as f32 * CELL_SIZE,
+            win_width,
+            METRICS_HEIGHT,
+            BLACK,
+        );
+        draw_text(
+            &format!("Speed: {}", speed),
+            10.0,
+            BOARD_HEIGHT as f32 * CELL_SIZE + 28.0,
+            28.0,
+            WHITE,
+        );
+        if paused && !game.over {
+            draw_text("PAUSED", 120.0, 60.0, 48.0, WHITE);
+        }
+        if game.over {
+            let msg = "GAME OVER";
+            let text_dim = measure_text(msg, None, 80, 1.0);
+            draw_text(
+                msg,
+                (game.width as f32 * CELL_SIZE - text_dim.width) / 2.0,
+                (game.height as f32 * CELL_SIZE) / 2.0,
+                80.0,
+                WHITE,
+            );
+            draw_text(
+                "Press SPACE to restart",
+                60.0,
+                (game.height as f32 * CELL_SIZE) / 2.0 + 60.0,
+                32.0,
+                WHITE,
+            );
+        }
+        // Controls
+        if is_key_pressed(KeyCode::Space) {
+            if game.over {
+                game = Game::new();
+                paused = false;
+                speed = 1;
+            } else {
+                paused = !paused;
+            }
+        }
+        for n in 1..=9 {
+            let key = match n {
+                1 => KeyCode::Key1,
+                2 => KeyCode::Key2,
+                3 => KeyCode::Key3,
+                4 => KeyCode::Key4,
+                5 => KeyCode::Key5,
+                6 => KeyCode::Key6,
+                7 => KeyCode::Key7,
+                8 => KeyCode::Key8,
+                9 => KeyCode::Key9,
+                _ => continue,
+            };
+            if is_key_pressed(key) {
+                speed = n;
+            }
+        }
+        let mut new_dir = None;
         let mut fast = false;
-        let mut direction = None;
         if !game.over {
-            if window.is_key_down(Key::Up) {
-                direction = Some(Direction::Up);
-                if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) {
+            if is_key_down(KeyCode::Up) {
+                new_dir = Some(Direction::Up);
+                if is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift) {
                     fast = true;
                 }
-            } else if window.is_key_down(Key::Down) {
-                direction = Some(Direction::Down);
-                if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) {
+            } else if is_key_down(KeyCode::Down) {
+                new_dir = Some(Direction::Down);
+                if is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift) {
                     fast = true;
                 }
-            } else if window.is_key_down(Key::Left) {
-                direction = Some(Direction::Left);
-                if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) {
+            } else if is_key_down(KeyCode::Left) {
+                new_dir = Some(Direction::Left);
+                if is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift) {
                     fast = true;
                 }
-            } else if window.is_key_down(Key::Right) {
-                direction = Some(Direction::Right);
-                if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) {
+            } else if is_key_down(KeyCode::Right) {
+                new_dir = Some(Direction::Right);
+                if is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift) {
                     fast = true;
                 }
             }
-            if let Some(dir) = direction {
+            if let Some(dir) = new_dir {
                 game.change_dir(dir);
             }
         }
-        // Update
-        if !paused && !game.over && last_tick.elapsed() >= Duration::from_millis(150) {
+        // Speed logic: 1 = 150ms, 9 = 75ms
+        let interval = BASE_INTERVAL / (1.0 + (speed as f32 - 1.0) / 8.0);
+        if !paused && !game.over && get_time() - last_update >= interval as f64 {
             game.update();
             if fast {
-                game.update(); // move twice if shift is held
+                game.update();
             }
-            last_tick = Instant::now();
+            last_update = get_time();
         }
-        // Draw
-        draw_window(&game, &mut buffer, win_width, win_height);
-        window.update_with_buffer(&buffer, win_width, win_height).unwrap();
+        next_frame().await;
     }
 }
 
