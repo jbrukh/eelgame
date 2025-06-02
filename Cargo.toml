@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 crossterm = "0.27"
 rand = "0.8"
+ctrlc = "3.4"
+minifb = "0.25"
